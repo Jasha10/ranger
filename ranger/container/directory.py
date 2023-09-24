@@ -28,6 +28,74 @@ def sort_by_basename(path):
     """returns path.relative_path (for sorting)"""
     return path.relative_path
 
+def jashas_custom_sort_function(paths):
+    """
+    Definitions:
+    - Paths are considered hidden if they are prefixed with `.` or `_`.
+    - The 'beginning' of a path is an optional hidden prefix followed by a long of a 'non-dot' string as possible:
+      `^[._]*[^.]+`
+    This function sorts paths per the following:
+    - hidden files come after non-hidden files
+    - regular files are sorted by hidden-ness and by relative_path
+    - if a directory has the same 'beginning' as any non-directory file, then the directory will be sorted
+      together with those non-directory files
+    - directories that do not have a beginning-of-name collision with a regular file are sorted as follows:
+      - non-hidden directories come before all regular files
+      - hidden directories come after all regular files
+    """
+    # separate into hidden and non-hidden paths
+    non_hidden_paths_and_beginnings = []
+    non_hidden_non_directory_beginnings = []
+    hidden_paths_and_beginnings = []
+    hidden_non_directory_beginnings = []
+    for path in paths:
+        relative_path: str = path.relative_path
+        is_hidden = re.match(r"^[._]", relative_path)
+        beginning = re.match(r"^[._]*[^.]+", relative_path)
+        if beginning is not None:
+            beginning = beginning.group()
+        if is_hidden:
+            hidden_paths_and_beginnings.append((path, beginning))
+            if not path.is_directory:
+                hidden_non_directory_beginnings.append(beginning)
+        else:
+            non_hidden_paths_and_beginnings.append((path, beginning))
+            if not path.is_directory:
+                non_hidden_non_directory_beginnings.append(beginning)
+
+    # process non-hidden paths
+    non_hidden_directories_no_name_collision = []
+    non_hidden_other = []
+    for path, beginning in non_hidden_paths_and_beginnings:
+        if path.is_directory:
+            if beginning in non_hidden_non_directory_beginnings:
+                # name collision
+                non_hidden_other.append(path)
+            else:
+                non_hidden_directories_no_name_collision.append(path)
+        else:
+            non_hidden_other.append(path)
+
+    # process hidden paths
+    hidden_directories_no_name_collision = []
+    hidden_other = []
+    for path, beginning in hidden_paths_and_beginnings:
+        if path.is_directory:
+            if beginning in hidden_non_directory_beginnings:
+                # name collision
+                hidden_other.append(path)
+            else:
+                hidden_directories_no_name_collision.append(path)
+        else:
+            hidden_other.append(path)
+
+    non_hidden_directories_no_name_collision.sort(key=lambda path: path.relative_path)
+    non_hidden_other.sort(key=lambda path: path.relative_path)
+    hidden_directories_no_name_collision.sort(key=lambda path: path.relative_path)
+    hidden_other.sort(key=lambda path: path.relative_path)
+
+    return non_hidden_directories_no_name_collision + non_hidden_other + hidden_other + hidden_directories_no_name_collision
+
 
 def sort_by_basename_icase(path):
     """returns case-insensitive path.relative_path (for sorting)"""
@@ -124,6 +192,7 @@ class Directory(  # pylint: disable=too-many-instance-attributes,too-many-public
         'random': lambda path: random.random(),
         'type': lambda path: path.mimetype or '',
         'extension': lambda path: path.extension or '',
+        'jashas_custom_sort_function': jashas_custom_sort_function,
     }
 
     def __init__(self, path, **kw):
@@ -533,6 +602,13 @@ class Directory(  # pylint: disable=too-many-instance-attributes,too-many-public
             sort_func = self.sort_dict[self.settings.sort]
         except KeyError:
             sort_func = sort_by_basename
+
+        if self.settings.sort == 'jashas_custom_sort_function':
+            if not sort_func is jashas_custom_sort_function:
+                raise RuntimeError("sort_func is not jashas_custom_sort_function")
+            self.files_all = sort_func(self.files_all)
+            self.refilter()
+            return
 
         if self.settings.sort_case_insensitive and \
                 sort_func == sort_by_basename:
