@@ -17,3 +17,8 @@
 
 .idea
 .pytest_cache
+
+# Jasha's stuff:
+.direnv/
+.dmypy-pylsp.json
+.envrc
