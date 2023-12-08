@@ -388,6 +388,34 @@ class Actions(  # pylint: disable=too-many-instance-attributes,too-many-public-m
                         raise
                     self.notify('Error in line `%s\':\n  %s' % (line, str(ex)), bad=True)
 
+    def write_choosedir(self) -> None:
+        assert ranger.args.choosedir and self.thisdir and self.thisdir.path
+        # XXX: UnicodeEncodeError: 'utf-8' codec can't encode character
+        # '\udcf6' in position 42: surrogates not allowed
+        with open(ranger.args.choosedir, 'w', encoding="utf-8") as fobj:
+            fobj.write(self.thisdir.path)
+
+    def write_choosefile(self) -> None:
+        assert ranger.args.choosefile
+        with open(
+            ranger.args.choosefile, 'w', encoding="utf-8"
+        ) as fobj:
+            fobj.write(self.fm.thisfile.path)
+
+    def  write_choosefiles(self) -> None:
+        assert ranger.args.choosefiles
+        paths = []
+        for hist in self.fm.thistab.history:
+            for fobj in hist.files:
+                if fobj.marked and fobj.path not in paths:
+                    paths += [fobj.path]
+        paths += [f.path for f in self.fm.thistab.get_selection() if f.path not in paths]
+
+        with open(
+            ranger.args.choosefiles, 'w', encoding="utf-8"
+        ) as fobj:
+            fobj.write('\n'.join(paths) + '\n')
+
     def execute_file(self, files, **kw):  # pylint: disable=too-many-branches
         """Uses the "rifle" module to open/execute a file
 
@@ -406,23 +434,10 @@ class Actions(  # pylint: disable=too-many-instance-attributes,too-many-public-m
         # ranger can act as a file chooser when running with --choosefile=...
         if mode == 0 and 'label' not in kw:
             if ranger.args.choosefile:
-                with open(
-                    ranger.args.choosefile, 'w', encoding="utf-8"
-                ) as fobj:
-                    fobj.write(self.fm.thisfile.path)
+                self.write_choosefile()
 
             if ranger.args.choosefiles:
-                paths = []
-                for hist in self.fm.thistab.history:
-                    for fobj in hist.files:
-                        if fobj.marked and fobj.path not in paths:
-                            paths += [fobj.path]
-                paths += [f.path for f in self.fm.thistab.get_selection() if f.path not in paths]
-
-                with open(
-                    ranger.args.choosefiles, 'w', encoding="utf-8"
-                ) as fobj:
-                    fobj.write('\n'.join(paths) + '\n')
+                self.write_choosefiles()
 
             if ranger.args.choosefile or ranger.args.choosefiles:
                 raise SystemExit
